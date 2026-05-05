@@ -1,75 +1,69 @@
+# Дисклеймер
+
+> README був написаний за допомогою використання штучного інтелекту, проте був змінений в моментах де інформація була донесена не так як я пояснив ШІ в промпті
+
+
+
+
 # Backend Hosting Guide
 
-> Цей гайд пояснює як захостити бекенд на різних фреймворках та як об'єднати їх в одну систему через Docker Compose + Nginx.
+> Гайд охоплює запуск бекенду на різних фреймворках через Docker, деплой на Render, об'єднання сервісів через Docker Compose + Nginx, CI/CD через GitHub Actions та оркестрацію через Kubernetes. Прошу звернути уваги що докерфайли для .NET, phpMyAdmin, Java SpringBoot, Nodejs(Express, Next) не були створені, так як немає програміста якій міг би писати на цих інструментах, але саме розуміння хостингу цих сервісів я маю.
 
 ---
 
 # FastAPI
 
-FastAPI — сучасний Python-фреймворк для побудови REST API. Він надзвичайно швидкий, підтримує async/await і автоматично генерує документацію Swagger.
+FastAPI — сучасний Python-фреймворк для побудови REST API. Підтримує async/await і автоматично генерує Swagger документацію.
 
-## Запуск локально через Docker
+## Запуск через Docker
 
 ```dockerfile
-# Dockerfile
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt --root-user-action=ignore
 
 COPY . .
 
-EXPOSE 8000
+EXPOSE 3300
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-```txt
-# requirements.txt
-fastapi
-uvicorn
-```
-
-```python
-# main.py
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-def root():
-    return {"framework": "FastAPI", "status": "running"}
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3300"]
 ```
 
 ```bash
-# Збірка та запуск
-docker build -t fastapi-app .
-docker run -d -p 8000:8000 fastapi-app
+docker build -t fastapi-app:latest .
+docker run -d -p 3300:3300 fastapi-app:latest
 ```
+
+Swagger документація доступна на `http://localhost:3300/docs`
 
 ## Деплой проекту
 
-### Так як в мене немає коштів для хорошо хостинга як приклад будемо використовувати бесплатний хостинг Render при наявності коштів рекомендується використовувати AWS
+### Для ролі бесплатного хостингу будем використовувати Render. При наявності фінансів рекомендується використовувати AWS.
+
+### Кроки
 
 1. Запушити проєкт на GitHub
 2. Зайти на [render.com](https://render.com) → **New Web Service**
 3. Підключити репозиторій
 4. Вказати команду запуску:
    ```
-   uvicorn main:app --host 0.0.0.0 --port $PORT
+   uvicorn app.main:app --host 0.0.0.0 --port $PORT
    ```
 5. Render автоматично визначить Python і встановить залежності з `requirements.txt`
 
-
 ---
+
+### Сам Render використовує docker image як образ для хоста,проте він омбежений в ресурсах, немає такої кількості інструментів, та не дає виділити потрібні характеристики для сервера в вигляді:ОЗУ,ЦП,пам'яті, як AWS
+
 
 # phpMyAdmin
 
 phpMyAdmin — веб-інтерфейс для керування MySQL/MariaDB базами даних. Зазвичай розгортається разом із базою.
 
-## Запуск локально через Docker
+## Запуск через Docker
 
 ```yaml
 # docker-compose.yml
@@ -101,7 +95,6 @@ volumes:
 ```
 
 ```bash
-# Запуск
 docker compose up -d
 
 # phpMyAdmin буде доступний на http://localhost:8080
@@ -112,13 +105,12 @@ docker compose up -d
 
 phpMyAdmin не деплоїться напряму на Render як окремий сервіс, але можна:
 
-1. Створити **MySQL** базу через **Railway** або **PlanetScale** (мають безкоштовні тіри)
+1. Створити **MySQL** базу через **Railway** або **PlanetScale**
 2. Використовувати вбудований веб-інтерфейс Railway або підключитись через TablePlus/DBeaver
 3. Або задеплоїти phpMyAdmin як **Docker** сервіс на Render:
    - Обрати **New Web Service → Deploy from Docker**
    - Вказати image: `phpmyadmin/phpmyadmin`
    - Додати env змінні: `PMA_HOST`, `PMA_USER`, `PMA_PASSWORD`
-
 
 
 ---
@@ -127,10 +119,9 @@ phpMyAdmin не деплоїться напряму на Render як окрем�
 
 Node.js дозволяє запускати JavaScript на сервері. Популярний для REST API через фреймворки Express, Fastify або NestJS.
 
-## Запуск локально через Docker
+## Запуск через Docker
 
 ```dockerfile
-# Dockerfile
 FROM node:20-alpine
 
 WORKDIR /app
@@ -160,7 +151,6 @@ app.listen(3000, '0.0.0.0', () => {
 ```
 
 ```json
-// package.json
 {
   "name": "node-app",
   "version": "1.0.0",
@@ -171,7 +161,6 @@ app.listen(3000, '0.0.0.0', () => {
 ```
 
 ```bash
-# Збірка та запуск
 docker build -t node-app .
 docker run -d -p 3000:3000 node-app
 ```
@@ -185,20 +174,17 @@ docker run -d -p 3000:3000 node-app
    ```
    node server.js
    ```
-5. Або якщо є `npm start` в `package.json` — Render викличе його сам
-
-
 
 ---
 
 # Spring Boot
 
-Spring Boot — потужний Java-фреймворк для enterprise-рівня бекенду. Має вбудований сервер (Tomcat), IoC-контейнер і величезну екосистему.
+Spring Boot — потужний Java-фреймворк для enterprise-рівня бекенду. Має вбудований сервер Tomcat, IoC-контейнер і величезну екосистему.
 
-## Запуск локально через Docker
+## Запуск через Docker
 
 ```dockerfile
-# Dockerfile — multistage build
+# multistage build — образ виходить легшим без Maven
 FROM maven:3.9-eclipse-temurin-21 AS build
 
 WORKDIR /app
@@ -217,7 +203,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
 ```bash
-# Збірка та запуск
 docker build -t spring-app .
 docker run -d -p 8080:8080 spring-app
 ```
@@ -243,20 +228,17 @@ public class DemoController {
    SPRING_PROFILES_ACTIVE=prod
    SERVER_PORT=8080
    ```
-5. Health check: `/actuator/health` (якщо підключений Spring Actuator)
-
-
 
 ---
 
 # .NET
 
-ASP.NET Core — крос-платформний фреймворк від Microsoft для побудови API та веб-додатків. Працює на Linux, що робить його ідеальним для Docker.
+ASP.NET Core — крос-платформний фреймворк від Microsoft для побудови API. Працює на Linux, що робить його ідеальним для Docker.
 
-## Запуск локально через Docker
+## Запуск через Docker
 
 ```dockerfile
-# Dockerfile — multistage build
+# multistage build — зменшує образ з ~800MB до ~200MB
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 
 WORKDIR /src
@@ -289,7 +271,6 @@ app.Run();
 ```
 
 ```bash
-# Збірка та запуск
 docker build -t dotnet-app .
 docker run -d -p 8080:8080 dotnet-app
 ```
@@ -301,21 +282,19 @@ docker run -d -p 8080:8080 dotnet-app
 3. Вказати порт `8080` (або через `ASPNETCORE_URLS`)
 4. Render підхопить Dockerfile і задеплоїть автоматично
 
-
-
 ---
 
 # Об'єднання беку
 
-Найкращий варіант — запустити всі фреймворки через **Docker Compose** за одним **Nginx reverse proxy**. Це дозволяє мати один публічний порт (80/443) і роутити трафік до потрібного сервісу.
+Запускаємо всі фреймворки через **Docker Compose** за одним **Nginx reverse proxy** — один публічний порт і роутинг до кожного сервісу.
 
 ```
 Internet → :80 (Nginx)
-              ├── /api/fastapi/  →  FastAPI      :8001
-              ├── /api/node/     →  Node.js      :8002
-              ├── /api/spring/   →  Spring Boot  :8003
-              ├── /api/dotnet/   →  .NET         :8004
-              └── /phpmyadmin/   →  phpMyAdmin   :8005
+              ├── /api/fastapi/  →  FastAPI      :3300
+              ├── /api/node/     →  Node.js      :3000
+              ├── /api/spring/   →  Spring Boot  :8080
+              ├── /api/dotnet/   →  .NET         :8080
+              └── /phpmyadmin/   →  phpMyAdmin   :80
 ```
 
 ## docker-compose.yml
@@ -342,7 +321,7 @@ services:
   fastapi:
     build: ./fastapi
     expose:
-      - "8000"
+      - "3300"
     restart: always
 
   node:
@@ -398,7 +377,7 @@ http {
         listen 80;
 
         location /api/fastapi/ {
-            proxy_pass http://fastapi:8000/;
+            proxy_pass http://fastapi:3300/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
         }
@@ -429,7 +408,11 @@ http {
 }
 ```
 
-## .env файл
+### docker-compose в данному випадку використовується для оркестрації сервісів, тобто він об'єднує контейнери в одну мережу, а nginx в свою чергу працює як reverse-proxy.Він перенаправляє відповідні HTTP запити всередині Docker мережі
+
+
+
+## .env
 
 ```env
 MYSQL_ROOT_PASSWORD=supersecretpassword
@@ -445,31 +428,205 @@ docker compose up -d --build
 docker compose ps
 
 # Логи конкретного сервісу
-docker compose logs -f spring
+docker compose logs -f fastapi
 
 # Зупинка
 docker compose down
+```
+
+## Перевірка
+
+```bash
+curl http://localhost/api/fastapi/
+curl http://localhost/api/node/
+curl http://localhost/api/spring/
+curl http://localhost/api/dotnet/
+# phpMyAdmin: http://localhost/phpmyadmin/
+```
 
 ---
 
-## Деплой всього стека на VPS
+# CI/CD
 
-Для повноцінного продакшн-деплою на VPS (Hetzner, DigitalOcean):
+Автоматичний деплой через **GitHub Actions** — при кожному пуші в `main` сервер сам підтягує зміни і перезапускає Docker.
 
-```bash
-# 1. Клонуємо репо на сервер
-git clone https://github.com/yourname/backend-showcase.git
-cd backend-showcase
+## .github/workflows/deploy.yml
 
-# 2. Створюємо .env
-echo "MYSQL_ROOT_PASSWORD=supersecretpassword" > .env
+```yaml
+name: CI/CD Deploy
 
-# 3. Запускаємо
-docker compose up -d --build
+on:
+  push:
+    branches:
+      - production
 
-# 4. Налаштовуємо SSL через Let's Encrypt (опціонально)
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d yourdomain.com
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/backend-showcase
+            git pull origin main
+            docker compose up -d --build
+            docker image prune -f
 ```
 
-> 💡 Цей підхід демонструє реальні DevOps-скіли: контейнеризація, reverse proxy, multi-service оркестрація, environment variables та потенційно CI/CD через GitHub Actions.
+## Налаштування secrets
+
+Йди в репо → **Settings → Secrets and variables → Actions → New repository secret**
+
+| Secret | Значення |
+|---|---|
+| `VPS_HOST` | IP адреса сервера |
+| `VPS_USER` | юзер на сервері (`root` або `ubuntu`) |
+| `VPS_SSH_KEY` | приватний SSH ключ (`cat ~/.ssh/id_rsa`) |
+
+
+
+## Перший деплой вручну
+
+```bash
+git clone https://github.com/yourname/backend-showcase.git /opt/backend-showcase
+cd /opt/backend-showcase
+echo "MYSQL_ROOT_PASSWORD=supersecretpassword" > .env
+docker compose up -d --build
+```
+
+Після цього кожен пуш в `main` деплоїться автоматично.
+
+
+### CI/CD в данному випадку використовується для ssh підключення
+
+---
+
+
+# Kubernetes
+
+Kubernetes автоматично підтримує задану кількість запущених контейнерів. Якщо один впав — одразу піднімає новий.
+
+
+
+```bash
+
+```
+
+## k8s/deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  labels:
+    app: backend
+spec:
+  replicas: 2                        # 2 контейнери завжди
+  selector:
+    matchLabels:
+      app: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: fastapi-app:latest
+          ports:
+            - containerPort: 3300
+
+          # Якщо не відповідає 3 рази — перезапускає контейнер
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3300
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+
+          # Перевірка готовності приймати трафік
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3300
+            initialDelaySeconds: 5
+            periodSeconds: 3
+
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3300
+  type: LoadBalancer
+```
+
+## Запуск
+
+```bash
+kubectl apply -f k8s/deployment.yaml
+
+# Перевірити що 2 поди запущені
+kubectl get pods
+```
+
+## Тест авто-відновлення
+
+```bash
+# Вбити один под вручну
+kubectl delete pod <pod-name>
+
+# Спостерігати як Kubernetes піднімає новий
+kubectl get pods -w
+```
+
+```
+NAME                      READY   STATUS
+backend-xxx-aaa           1/1     Running    ← живий
+backend-xxx-bbb           1/1     Running    ← живий
+
+backend-xxx-bbb           0/1     Terminating   ← вбили
+backend-xxx-ccc           0/1     Pending       ← k8s піднімає новий
+backend-xxx-ccc           1/1     Running       ← готовий
+```
+
+## Генерація deployment.yaml без написання вручну
+
+```bash
+kubectl create deployment backend \
+  --image=fastapi-app:latest \
+  --replicas=2 \
+  --dry-run=client \
+  -o yaml > k8s/deployment.yaml
+```
